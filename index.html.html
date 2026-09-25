@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Purifikasi Biogas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        :root {
+            /* Tema Biogas: Emerald Teal Alami (Hijau-Kebiruan) */
+            --bio-50:     #F0FDF8;
+            --bio-100:    #DCFCEE;
+            --bio-200:    #BCF6DC;
+            --bio-300:    #82ECC2;
+            --bio-400:    #34D399;
+            --bio-500:    #10B981;
+            --bio-600:    #059669;
+            --bio-700:    #047857;
+            --bio-800:    #065F46;
+            --bio-900:    #064E3B;
+
+            /* Teal-Cyan Accents */
+            --teal-500:   #0D9488;
+            --teal-600:   #0F766E;
+            --teal-700:   #115E59;
+            --cyan-500:   #06B6D4;
+            --cyan-600:   #0891B2;
+
+            /* Background & Surface */
+            --bg:         #F3FAF7;
+            --surface:    #FFFFFF;
+            --surface2:   #EAF6F2;
+            --surface3:   #DDF0EA;
+            --border:     rgba(13, 148, 136, 0.16);
+            --border2:    rgba(13, 148, 136, 0.28);
+            --text:       #0A2622;
+            --text2:      #115E59;
+            --text3:      #1E7B70;
+            --shadow:     0 4px 20px rgba(5, 150, 105, 0.07);
+            --shadow-lg:  0 10px 32px rgba(5, 150, 105, 0.12);
+            --radius-sm:  8px;
+            --radius-md:  14px;
+            --radius-lg:  18px;
+            --radius-xl:  24px;
+            --red:        #E53535;
+            --font: 'Plus Jakarta Sans', sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font);
+            background-color: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(52, 211, 153, 0.08) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        /* ====== TOPBAR ====== */
+        .topbar {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border2);
+            padding: 0 36px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 68px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--teal-500), var(--bio-500));
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+            color: white;
+        }
+
+        .brand-text h1 {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text);
+            line-height: 1.2;
+            letter-spacing: -0.2px;
+        }
+
+        .brand-text p {
+            font-size: 11px;
+            color: var(--text3);
+            font-weight: 600;
+            margin-top: 1px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 16px;
+            background: var(--surface2);
+            border: 1px solid var(--border2);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text2);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #94a3b8;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.connected { 
+            background: #10B981; 
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25); 
+        }
+        .status-dot.error { background: var(--red); }
+        .status-dot.connecting { 
+            background: #06B6D4; 
+            animation: blink 1.2s infinite; 
+        }
+
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        /* ====== NAV ====== */
+        .nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            padding: 0 36px;
+            gap: 6px;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            padding: 14px 22px;
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text3);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-btn:hover { 
+            color: var(--teal-600);
+            background: var(--bio-50);
+        }
+
+        .nav-btn.active {
+            color: var(--teal-600);
+            border-bottom-color: var(--bio-500);
+            background: var(--surface2);
+        }
+
+        /* ====== MAIN CONTAINER ====== */
+        .main {
+            flex: 1;
+            padding: 36px;
+            max-width: 1240px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ====== PAGE HEADER ====== */
+        .page-header {
+            margin-bottom: 28px;
+        }
+
+        .page-header h2 {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--text);
+            letter-spacing: -0.4px;
+        }
+
+        .page-header p {
+            font-size: 13px;
+            color: var(--text3);
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        /* ====== HOME: FULL-WIDTH BIOGAS CARD ====== */
+        .main-gas-card {
+            background: var(--surface);
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .main-gas-header {
+            padding: 22px 32px;
+            background: linear-gradient(90deg, #F0FDF8 0%, #FFFFFF 100%);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .header-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-badge-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--bio-500), var(--cyan-500));
+            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+        }
+
+        .main-gas-header h3 {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--teal-700);
+        }
+
+        .live-tag {
+            background: var(--bio-100);
+            color: var(--bio-800);
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .live-tag::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--bio-600);
+            animation: blink 1s infinite;
+        }
+
+        /* 4-COLUMN PARAMETER GRID (Left-to-Right) */
+        .gas-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            padding: 32px;
+        }
+
+        @media (max-width: 1024px) {
+            .gas-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 640px) {
+            .gas-grid { grid-template-columns: 1fr; padding: 20px; }
+            .main { padding: 18px; }
+            .topbar { padding: 0 18px; }
+            .nav { padding: 0 18px; }
+        }
+
+        .gas-param-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.25s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gas-param-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--teal-500), var(--bio-400));
+            opacity: 0.8;
+        }
+
+        .gas-param-box:hover {
+            transform: translateY(-3px);
+            background: #FFFFFF;
+            border-color: var(--teal-500);
+            box-shadow: 0 8px 24px rgba(13, 148, 136, 0.12);
+        }
+
+        .param-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .param-icon-badge {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            background: #FFFFFF;
+            border: 1px solid var(--border2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+
+        .param-formula {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 3px 8px;
+            background: rgba(13, 148, 136, 0.1);
+            color: var(--teal-700);
+            border-radius: 6px;
+        }
+
+        .param-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text2);
+            margin-bottom: 8px;
+        }
+
+        .param-value-wrap {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .param-value-large {
+            font-family: var(--mono);
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--teal-700);
+            letter-spacing: -0.5px;
+        }
+
+        .param-unit-badge {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .param-desc {
+            font-size: 11px;
+            color: var(--text3);
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--border2);
+            font-weight: 500;
+        }
+
+        /* ====== LAST UPDATE ====== */
+        .last-update {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text3);
+            margin-top: 22px;
+            font-family: var(--mono);
+            font-weight: 500;
+        }
+
+        /* ====== DATA PAGE ====== */
+        .filter-card, .table-card, .chart-controls, .chart-card, .about-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .filter-card {
+            padding: 22px 28px;
+            margin-bottom: 24px;
+        }
+
+        .filter-card h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text3);
+        }
+
+        .filter-group input[type="datetime-local"] {
+            padding: 10px 14px;
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-sm);
+            font-family: var(--mono);
+            font-size: 13px;
+            color: var(--text);
+            background: var(--surface2);
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .filter-group input:focus {
+            border-color: var(--teal-500);
+            box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+        }
+
+        .btn-primary {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, var(--teal-600), var(--bio-600));
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+
+        .table-card {
+            overflow: hidden;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 520px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        table thead {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        table th {
+            padding: 12px 14px;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border2);
+            background: var(--surface2);
+            color: var(--text2);
+        }
+
+        table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 12px;
+        }
+
+        table td.ts-cell {
+            font-family: var(--font);
+            font-weight: 600;
+            color: var(--text2);
+            text-align: left;
+        }
+
+        table tbody tr:hover { background: var(--bio-50); }
+
+        .table-empty {
+            padding: 48px 24px;
+            text-align: center;
+            color: var(--text3);
+            font-size: 13px;
+        }
+
+        /* ====== CHART PAGE ====== */
+        .chart-controls {
+            padding: 22px 28px;
+            margin-bottom: 24px;
+        }
+
+        .chart-controls h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .select-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .select-group label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text3);
+        }
+
+        .select-group select {
+            padding: 10px 14px;
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-sm);
+            font-family: var(--font);
+            font-size: 13px;
+            color: var(--text);
+            background: var(--surface2);
+            outline: none;
+            cursor: pointer;
+            min-width: 200px;
+        }
+
+        .chart-card {
+            padding: 28px;
+        }
+
+        .chart-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--teal-700);
+            margin-bottom: 20px;
+        }
+
+        .chart-canvas-wrap {
+            position: relative;
+            height: 380px;
+        }
+
+        /* ====== ABOUT PAGE ====== */
+        .hero-banner {
+            background: linear-gradient(135deg, var(--teal-700) 0%, var(--bio-700) 100%);
+            border-radius: var(--radius-xl);
+            padding: 36px 40px;
+            color: white;
+            margin-bottom: 28px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .hero-banner::before {
+            content: '🌱';
+            position: absolute;
+            right: 32px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 80px;
+            opacity: 0.18;
+        }
+
+        .hero-banner h2 {
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            letter-spacing: -0.3px;
+        }
+
+        .hero-banner p {
+            font-size: 13px;
+            opacity: 0.9;
+            max-width: 580px;
+            line-height: 1.6;
+        }
+
+        .about-layout {
+            display: grid;
+            grid-template-columns: 1fr 1.1fr;
+            gap: 28px;
+        }
+
+        @media (max-width: 820px) {
+            .about-layout { grid-template-columns: 1fr; }
+        }
+
+        .about-card {
+            padding: 28px;
+        }
+
+        .about-section-label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--teal-600);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .about-section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border2);
+        }
+
+        .team-list { display: flex; flex-direction: column; gap: 14px; }
+
+        .team-member {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            background: var(--surface2);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            transition: transform 0.2s;
+        }
+
+        .team-member:hover {
+            transform: translateX(4px);
+            border-color: var(--teal-500);
+        }
+
+        .avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+
+        .avatar.member {
+            background: linear-gradient(135deg, var(--bio-400), var(--teal-600));
+            color: white;
+        }
+
+        .avatar.supervisor {
+            background: linear-gradient(135deg, #0F766E, #042F2E);
+            color: white;
+        }
+
+        .member-info h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .member-info p {
+            font-size: 11px;
+            color: var(--text3);
+            margin-top: 2px;
+            font-weight: 600;
+        }
+
+        .badge {
+            margin-left: auto;
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-member { background: var(--bio-100); color: var(--bio-800); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-supervisor { background: #E6FFFA; color: var(--teal-700); border: 1px solid rgba(13, 148, 136, 0.3); }
+
+        .institution-info {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .inst-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            background: var(--surface2);
+        }
+
+        .inst-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-sm);
+            background: #FFFFFF;
+            border: 1px solid var(--border2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+            color: var(--teal-600);
+        }
+
+        .inst-row p {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.4;
+        }
+
+        .inst-row small {
+            font-size: 11px;
+            color: var(--text3);
+            font-weight: 500;
+        }
+
+        /* ====== TOAST ====== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--teal-800);
+            color: white;
+            padding: 12px 20px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .toast.show { opacity: 1; transform: translateY(0); }
+
+        /* ====== FOOTER ====== */
+        footer {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            text-align: center;
+            padding: 18px 32px;
+            font-size: 12px;
+            color: var(--text3);
+            margin-top: auto;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+    <div class="topbar-brand">
+        <div class="brand-icon">🌿</div>
+        <div class="brand-text">
+            <h1>Monitoring Purifikasi Biogas</h1>
+            <p>Instrumentation and Control Laboratory — ITS</p>
+        </div>
+    </div>
+    <div class="status-pill">
+        <div class="status-dot connecting" id="status-dot"></div>
+        <span id="status-text">Menghubungkan...</span>
+    </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+    <button class="nav-btn active" onclick="showPage('home', this)">
+        🌱 Home
+    </button>
+    <button class="nav-btn" onclick="showPage('data', this)">
+        📋 Data
+    </button>
+    <button class="nav-btn" onclick="showPage('chart', this)">
+        📈 Chart
+    </button>
+    <button class="nav-btn" onclick="showPage('about', this)">
+        👥 About Us
+    </button>
+</nav>
+
+<!-- MAIN -->
+<main class="main">
+
+    <!-- ===== PAGE: HOME ===== -->
+    <div class="page active" id="page-home">
+        <div class="page-header">
+            <h2>Data Real-Time Kandungan Gas</h2>
+            <p>Pemantauan telemetri multi-parameter kualitas biogas secara langsung</p>
+        </div>
+
+        <!-- FULL-WIDTH CARD SECTION -->
+        <div class="main-gas-card">
+            <div class="main-gas-header">
+                <div class="header-title-wrap">
+                    <div class="header-badge-dot"></div>
+                    <h3>KONSENTRASI KANDUNGAN BIOGAS</h3>
+                </div>
+                <div class="live-tag">Live Sensor Feed</div>
+            </div>
+
+            <!-- 4 PARAMETER BOXES (SPAN FROM LEFT TO RIGHT) -->
+            <div class="gas-grid">
+                
+                <!-- METANA (CH4) -->
+                <div class="gas-param-box">
+                    <div class="param-top">
+                        <div class="param-icon-badge">🔥</div>
+                        <span class="param-formula">CH₄</span>
+                    </div>
+                    <div>
+                        <div class="param-title">Gas Metana</div>
+                        <div class="param-value-wrap">
+                            <span class="param-value-large" id="ch4_in">—</span>
+                            <span class="param-unit-badge">PPM</span>
+                        </div>
+                    </div>
+                    <div class="param-desc">Komponen bahan bakar utama biogas</div>
+                </div>
+
+                <!-- HIDROGEN SULFIDA (H2S) -->
+                <div class="gas-param-box">
+                    <div class="param-top">
+                        <div class="param-icon-badge">🧪</div>
+                        <span class="param-formula">H₂S</span>
+                    </div>
+                    <div>
+                        <div class="param-title">Hidrogen Sulfida</div>
+                        <div class="param-value-wrap">
+                            <span class="param-value-large" id="h2s_in">—</span>
+                            <span class="param-unit-badge">PPM</span>
+                        </div>
+                    </div>
+                    <div class="param-desc">Zat pengotor &amp; penyebab korosi</div>
+                </div>
+
+                <!-- KARBON DIOKSIDA (CO2) -->
+                <div class="gas-param-box">
+                    <div class="param-top">
+                        <div class="param-icon-badge">☁️</div>
+                        <span class="param-formula">CO₂</span>
+                    </div>
+                    <div>
+                        <div class="param-title">Karbon Dioksida</div>
+                        <div class="param-value-wrap">
+                            <span class="param-value-large" id="co2_in">—</span>
+                            <span class="param-unit-badge">PPM</span>
+                        </div>
+                    </div>
+                    <div class="param-desc">Gas inert penurun nilai kalor bakar</div>
+                </div>
+
+                <!-- KELEMBABAN (H2O) -->
+                <div class="gas-param-box">
+                    <div class="param-top">
+                        <div class="param-icon-badge">💧</div>
+                        <span class="param-formula">H₂O</span>
+                    </div>
+                    <div>
+                        <div class="param-title">Kelembaban / Uap Air</div>
+                        <div class="param-value-wrap">
+                            <span class="param-value-large" id="h2o_in">—</span>
+                            <span class="param-unit-badge">% RH</span>
+                        </div>
+                    </div>
+                    <div class="param-desc">Kadar uap air dalam aliran gas</div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="last-update" id="last-update-text">Menunggu data dari perangkat...</div>
+    </div>
+
+    <!-- ===== PAGE: DATA ===== -->
+    <div class="page" id="page-data">
+        <div class="page-header">
+            <h2>Riwayat Data Historis</h2>
+            <p>Tarik data historis dari Google Sheets berdasarkan rentang tanggal dan waktu</p>
+        </div>
+
+        <div class="filter-card">
+            <h3>🔍 Filter Data Historis</h3>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Dari Tanggal &amp; Jam</label>
+                    <input type="datetime-local" id="start-datetime">
+                </div>
+                <div class="filter-group">
+                    <label>Sampai Tanggal &amp; Jam</label>
+                    <input type="datetime-local" id="end-datetime">
+                </div>
+                <button class="btn-primary" onclick="ambilDataHistoris()">Cari Data</button>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="table-wrapper">
+                <table id="data-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; min-width:170px;">Timestamp</th>
+                            <th>CH₄ (PPM)</th>
+                            <th>H₂S (PPM)</th>
+                            <th>CO₂ (PPM)</th>
+                            <th>H₂O (% RH)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <tr>
+                            <td colspan="5" class="table-empty">Pilih rentang tanggal dan klik Cari Data.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PAGE: CHART ===== -->
+    <div class="page" id="page-chart">
+        <div class="page-header">
+            <h2>Visualisasi Grafik</h2>
+            <p>Pilih parameter dan rentang waktu untuk menampilkan grafik analitik</p>
+        </div>
+
+        <div class="chart-controls">
+            <h3>⚙️ Konfigurasi Grafik</h3>
+            <div class="controls-row" style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+                <div class="select-group">
+                    <label>Parameter</label>
+                    <select id="chart-param" onchange="renderChart()">
+                        <option value="all">Semua Parameter</option>
+                        <option value="ch4">CH₄ — Gas Metana</option>
+                        <option value="h2s">H₂S — Hidrogen Sulfida</option>
+                        <option value="co2">CO₂ — Karbon Dioksida</option>
+                        <option value="h2o">H₂O — Kelembaban</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Dari Tanggal &amp; Jam</label>
+                    <input type="datetime-local" id="chart-start">
+                </div>
+                <div class="filter-group">
+                    <label>Sampai Tanggal &amp; Jam</label>
+                    <input type="datetime-local" id="chart-end">
+                </div>
+                <button class="btn-primary" onclick="loadChartData()">Tampilkan Grafik</button>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title" id="chart-title">Pilih parameter dan rentang waktu untuk memulai.</div>
+            <div class="chart-canvas-wrap">
+                <canvas id="mainChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PAGE: ABOUT US ===== -->
+    <div class="page" id="page-about">
+        <div class="hero-banner">
+            <h2>Instrumentation and Control Laboratory</h2>
+            <p>Sistem monitoring dan purifikasi biogas berbasis IoT real-time terintegrasi dengan ESP32-S3 dan protokol MQTT HiveMQ Cloud.</p>
+        </div>
+
+        <div class="about-layout">
+            <!-- Tim Peneliti & Pembimbing -->
+            <div class="about-card">
+                <div class="about-section-label">Tim Pengembang</div>
+                <div class="team-list">
+                    <!-- Anggota: Muhammad Bagaskara -->
+                    <div class="team-member">
+                        <div class="avatar member">MB</div>
+                        <div class="member-info">
+                            <h4>Muhammad Bagaskara | 2042231017</h4>
+                            <p>Mahasiswa</p>
+                        </div>
+                        <span class="badge badge-member">Anggota</span>
+                    </div>
+
+                    <!-- Pembimbing: Dr. Ir. Totok Soehartanto, DEA -->
+                    <div class="team-member" style="margin-top: 8px;">
+                        <div class="avatar supervisor">TS</div>
+                        <div class="member-info">
+                            <h4>Dr. Ir. Totok Soehartanto, DEA</h4>
+                            <p>Dosen Pembimbing Laboratorium</p>
+                        </div>
+                        <span class="badge badge-supervisor">Supervisor</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Institusi -->
+            <div class="about-card">
+                <div class="about-section-label">Institusi &amp; Laboratorium</div>
+                <div class="institution-info">
+                    <div class="inst-row">
+                        <div class="inst-icon">🏛️</div>
+                        <div>
+                            <p>Instrumentation and Control Laboratory</p>
+                            <small>Laboratorium Instrumentasi dan Kontrol</small>
+                        </div>
+                    </div>
+                    <div class="inst-row">
+                        <div class="inst-icon">📐</div>
+                        <div>
+                            <p>Department of Instrumentation Engineering</p>
+                            <small>Departemen Teknik Instrumentasi</small>
+                        </div>
+                    </div>
+                    <div class="inst-row">
+                        <div class="inst-icon">🎓</div>
+                        <div>
+                            <p>Faculty of Vocation</p>
+                            <small>Fakultas Vokasi</small>
+                        </div>
+                    </div>
+                    <div class="inst-row">
+                        <div class="inst-icon">🏫</div>
+                        <div>
+                            <p>Institut Teknologi Sepuluh Nopember</p>
+                            <small>ITS Surabaya, Jawa Timur, Indonesia</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<footer>
+    © 2026 Instrumentation and Control Laboratory — Institut Teknologi Sepuluh Nopember &nbsp;|&nbsp; Sistem Monitoring Purifikasi Biogas
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ====== NAVIGASI ======
+function showPage(name, btn) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    btn.classList.add('active');
+}
+
+// ====== TOAST ======
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ====== MQTT CONFIG (HIVEMQ CLOUD WSS) ======
+const mqtt_host = "d93da8dab5db4efab7043acf99015f68.s1.eu.hivemq.cloud";
+const mqtt_port = 8884;
+const mqtt_path = "/mqtt";
+const username  = "bagaskun";
+const password  = "whitewhitE";
+const topic_sub = "esp32/biogas";
+
+const googleScriptUrl = "https://script.google.com/macros/s/AKfycbynkeIcYwpZCLbmF0TpBO9j4BDxi5h0J6kObcYskrokd4v10DbWWIvgjmlvi3EaK6mo/exec";
+
+const clientID = "WebDashboardBiogas-" + Math.floor(Math.random() * 99999);
+const client   = new Paho.MQTT.Client(mqtt_host, Number(mqtt_port), mqtt_path, clientID);
+
+client.onConnectionLost = function(res) {
+    if (res.errorCode !== 0) {
+        setStatus('error', 'Koneksi Terputus');
+        console.warn('MQTT Connection Lost:', res.errorMessage);
+        setTimeout(connectMQTT, 5000);
+    }
+};
+
+client.onMessageArrived = onMessageArrived;
+
+function connectMQTT() {
+    setStatus('connecting', 'Menghubungkan ke Broker...');
+    
+    client.connect({
+        onSuccess: function() {
+            setStatus('connected', 'Terhubung — Memantau Data');
+            console.log("MQTT Terhubung! Berlangganan topik:", topic_sub);
+            client.subscribe(topic_sub);
+        },
+        onFailure: function(msg) {
+            setStatus('error', 'Koneksi Gagal');
+            console.error('Koneksi MQTT Gagal:', msg.errorMessage);
+            setTimeout(connectMQTT, 5000);
+        },
+        userName: username,
+        password: password,
+        useSSL: true,
+        timeout: 10,
+        keepAliveInterval: 30,
+        cleanSession: true
+    });
+}
+
+connectMQTT();
+
+function setStatus(type, text) {
+    document.getElementById('status-dot').className = 'status-dot ' + type;
+    document.getElementById('status-text').textContent = text;
+}
+
+function onMessageArrived(message) {
+    if (message.destinationName !== topic_sub) return;
+    try {
+        const d = JSON.parse(message.payloadString);
+
+        // Update nilai sensor real-time
+        if (document.getElementById('ch4_in')) document.getElementById('ch4_in').textContent = d.ch4_in !== undefined ? d.ch4_in : '—';
+        if (document.getElementById('h2s_in')) document.getElementById('h2s_in').textContent = d.h2s_in !== undefined ? d.h2s_in : '—';
+        if (document.getElementById('co2_in')) document.getElementById('co2_in').textContent = d.co2_in !== undefined ? d.co2_in : '—';
+        if (document.getElementById('h2o_in')) document.getElementById('h2o_in').textContent = d.h2o_in !== undefined ? d.h2o_in : '—';
+
+        const now = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'medium' });
+        document.getElementById('last-update-text').textContent = 'Terakhir diperbarui: ' + now;
+
+        simpanKeSpreadsheet(d);
+    } catch(e) {
+        console.error('Parse JSON gagal:', e, 'Payload:', message.payloadString);
+    }
+}
+
+function simpanKeSpreadsheet(dataObj) {
+    if (!googleScriptUrl) return;
+    fetch(googleScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataObj)
+    }).catch(e => console.error('Gagal kirim ke Sheets:', e));
+}
+
+// ====== DATA HISTORIS ======
+function ambilDataHistoris() {
+    const start = document.getElementById('start-datetime').value;
+    const end   = document.getElementById('end-datetime').value;
+    const tbody = document.getElementById('table-body');
+
+    if (!start || !end) {
+        showToast('⚠️ Mohon isi tanggal awal dan akhir.');
+        return;
+    }
+
+    tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Menarik data dari Google Sheets...</td></tr>';
+
+    const url = `${googleScriptUrl}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    fetch(url)
+        .then(r => r.json())
+        .then(result => {
+            tbody.innerHTML = '';
+            if (result.status !== 'success' || !result.data || result.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Tidak ada data pada rentang waktu tersebut.</td></tr>';
+                return;
+            }
+            result.data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="ts-cell">${row.timestamp}</td>
+                    <td>${row.ch4_in}</td>
+                    <td>${row.h2s_in}</td>
+                    <td>${row.co2_in}</td>
+                    <td>${row.h2o_in}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(e => {
+            tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Gagal menghubungi server Google Sheets.</td></tr>';
+        });
+}
+
+// ====== CHART ======
+let mainChart = null;
+let cachedChartData = null;
+
+const paramMeta = {
+    ch4: { label: 'CH₄ — Gas Metana (PPM)', key: 'ch4_in', color: '#10B981' },
+    h2s: { label: 'H₂S — Hidrogen Sulfida (PPM)', key: 'h2s_in', color: '#F59E0B' },
+    co2: { label: 'CO₂ — Karbon Dioksida (PPM)', key: 'co2_in', color: '#06B6D4' },
+    h2o: { label: 'H₂O — Kelembaban (% RH)', key: 'h2o_in', color: '#0D9488' }
+};
+
+function loadChartData() {
+    const start = document.getElementById('chart-start').value;
+    const end   = document.getElementById('chart-end').value;
+
+    if (!start || !end) {
+        showToast('⚠️ Pilih rentang waktu untuk grafik.');
+        return;
+    }
+
+    document.getElementById('chart-title').textContent = 'Memuat data...';
+
+    const url = `${googleScriptUrl}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    fetch(url)
+        .then(r => r.json())
+        .then(result => {
+            if (result.status !== 'success' || !result.data || result.data.length === 0) {
+                document.getElementById('chart-title').textContent = 'Tidak ada data pada rentang waktu tersebut.';
+                if (mainChart) { mainChart.destroy(); mainChart = null; }
+                cachedChartData = null;
+                return;
+            }
+            cachedChartData = result.data;
+            renderChart(cachedChartData);
+        })
+        .catch(() => {
+            document.getElementById('chart-title').textContent = 'Gagal memuat data grafik.';
+        });
+}
+
+function renderChart(data) {
+    if (!data && cachedChartData) data = cachedChartData;
+    if (!data) return;
+
+    const param   = document.getElementById('chart-param').value;
+    const labels  = data.map(r => r.timestamp);
+    const ctx     = document.getElementById('mainChart').getContext('2d');
+
+    if (mainChart) { mainChart.destroy(); mainChart = null; }
+
+    let datasets = [];
+    let titleText = '';
+
+    const makeDs = (label, key, color, srcData) => ({
+        label,
+        data: srcData.map(r => parseFloat(r[key]) || 0),
+        borderColor: color,
+        backgroundColor: color + '22',
+        borderWidth: 2,
+        pointRadius: srcData.length > 50 ? 0 : 3,
+        tension: 0.35,
+        fill: true
+    });
+
+    if (param === 'all') {
+        titleText = 'Semua Parameter Kandungan Biogas';
+        ['ch4','h2s','co2','h2o'].forEach(p => {
+            const m = paramMeta[p];
+            datasets.push(makeDs(m.label, m.key, m.color, data));
+        });
+    } else {
+        const m = paramMeta[param];
+        titleText = m.label;
+        datasets.push(makeDs(m.label, m.key, m.color, data));
+    }
+
+    document.getElementById('chart-title').innerHTML = '📊 ' + titleText;
+
+    mainChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 400 },
+            plugins: {
+                legend: {
+                    labels: {
+                        font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 },
+                        color: '#0F766E'
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        font: { family: "'JetBrains Mono', monospace", size: 10 },
+                        color: '#115E59',
+                        maxTicksLimit: 12
+                    },
+                    grid: { color: 'rgba(13, 148, 136, 0.08)' }
+                },
+                y: {
+                    ticks: {
+                        font: { family: "'JetBrains Mono', monospace", size: 11 },
+                        color: '#115E59'
+                    },
+                    grid: { color: 'rgba(13, 148, 136, 0.08)' }
+                }
+            }
+        }
+    });
+}
+</script>
+</body>
+</html>
